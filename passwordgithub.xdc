@@ -10,17 +10,19 @@ create_clock -period 10.000 -name sys_clk_pin -waveform {0.000 5.000} -add [get_
 
 ##Switches
 
-set_property -dict {PACKAGE_PIN J15 IOSTANDARD LVCMOS33} [get_ports {rst0}]
-set_property -dict {PACKAGE_PIN L16 IOSTANDARD LVCMOS33} [get_ports {rst1}]
-set_property -dict {PACKAGE_PIN M13 IOSTANDARD LVCMOS33} [get_ports {rst2}]
-set_property -dict {PACKAGE_PIN R15 IOSTANDARD LVCMOS33} [get_ports {rst3}]
-set_property -dict {PACKAGE_PIN R17 IOSTANDARD LVCMOS33} [get_ports {rst4}]
-set_property -dict {PACKAGE_PIN T18 IOSTANDARD LVCMOS33} [get_ports {rst5}]
-set_property -dict {PACKAGE_PIN U18 IOSTANDARD LVCMOS33} [get_ports {rst6}]
-set_property -dict {PACKAGE_PIN R13 IOSTANDARD LVCMOS33} [get_ports {rst7}]
-set_property -dict {PACKAGE_PIN T8 IOSTANDARD LVCMOS18} [get_ports {rst8}]
-set_property -dict {PACKAGE_PIN U8 IOSTANDARD LVCMOS18} [get_ports {rst9}]
-##set_property -dict {PACKAGE_PIN R16 IOSTANDARD LVCMOS33} [get_ports {SW[10]}]
+set_property -dict {PACKAGE_PIN J15 IOSTANDARD LVCMOS33} [get_ports {key_input[0]}]
+set_property -dict {PACKAGE_PIN L16 IOSTANDARD LVCMOS33} [get_ports {key_input[1]}]
+set_property -dict {PACKAGE_PIN M13 IOSTANDARD LVCMOS33} [get_ports {key_input[2]}]
+set_property -dict {PACKAGE_PIN R15 IOSTANDARD LVCMOS33} [get_ports {key_input[3]}]
+set_property -dict {PACKAGE_PIN R17 IOSTANDARD LVCMOS33} [get_ports {key_input[4]}]
+set_property -dict {PACKAGE_PIN T18 IOSTANDARD LVCMOS33} [get_ports {key_input[5]}]
+set_property -dict {PACKAGE_PIN U18 IOSTANDARD LVCMOS33} [get_ports {key_input[6]}]
+set_property -dict {PACKAGE_PIN R13 IOSTANDARD LVCMOS33} [get_ports {key_input[7]}]
+set_property -dict {PACKAGE_PIN T8 IOSTANDARD LVCMOS18} [get_ports {key_input[8]}]
+set_property -dict {PACKAGE_PIN U8 IOSTANDARD LVCMOS18} [get_ports {key_input[9]}]
+
+##更改密码的开关
+set_property -dict {PACKAGE_PIN R16 IOSTANDARD LVCMOS33} [get_ports {key_change}]
 ##set_property -dict {PACKAGE_PIN T13 IOSTANDARD LVCMOS33} [get_ports {SW[11]}]
 ##set_property -dict {PACKAGE_PIN H6 IOSTANDARD LVCMOS33} [get_ports {SW[12]}]
 ##set_property -dict {PACKAGE_PIN U12 IOSTANDARD LVCMOS33} [get_ports {SW[13]}]
@@ -82,15 +84,15 @@ set_property -dict {PACKAGE_PIN J13 IOSTANDARD LVCMOS33} [get_ports {led2}]
 #set_property -dict { PACKAGE_PIN C12   IOSTANDARD LVCMOS33 } [get_ports { CPU_RESETN }]; #IO_L3P_T0_DQS_AD1P_15 Sch=cpu_resetn
 
 ##输入键：
-set_property -dict {PACKAGE_PIN N17 IOSTANDARD LVCMOS33} [get_ports {B0}]
+set_property -dict {PACKAGE_PIN N17 IOSTANDARD LVCMOS33} [get_ports {key_read}]
 ##确定键：
-set_property -dict {PACKAGE_PIN M18 IOSTANDARD LVCMOS33} [get_ports {B1}]
+set_property -dict {PACKAGE_PIN M18 IOSTANDARD LVCMOS33} [get_ports {key_enter}]
 ##退回键：
-set_property -dict {PACKAGE_PIN P17 IOSTANDARD LVCMOS33} [get_ports {B2}]
+set_property -dict {PACKAGE_PIN P17 IOSTANDARD LVCMOS33} [get_ports {key_delete}]
 ##管理员解除警报键：
-set_property -dict {PACKAGE_PIN M17 IOSTANDARD LVCMOS33} [get_ports {B3}]
+set_property -dict {PACKAGE_PIN M17 IOSTANDARD LVCMOS33} [get_ports {key_restart}]
 ##更改密码键：
-set_property -dict {PACKAGE_PIN P18 IOSTANDARD LVCMOS33} [get_ports {B4}]
+##set_property -dict {PACKAGE_PIN P18 IOSTANDARD LVCMOS33} [get_ports {key_change}]
 
 
 ##Pmod Headers
