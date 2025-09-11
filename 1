@@ -1,0 +1,498 @@
+`timescale 1ns / 1ps
+
+module PassWord(
+    input key_change,      // 进入更改密码状态（按下为低电平）
+    input key_read,        // 读入密码信号（按下为低电平）
+    input [9:0] key_input,  // 按键输入
+    input key_delete,      // 删除上一位（按下为低电平）
+    input key_enter,       // 确认键（按下为低电平）
+    input key_restart,     // 管理员重启（按下为低电平）
+    input clk_100MHz,
+    output reg key_right = 0,      // 密码正确
+    output reg key_wrong = 0,     // 密码错误
+    output reg key_warn = 0,       // 报警状态
+    output reg key_change_state = 0, // 修改状态指示灯
+    output reg key_normal_state = 0, // 正常状态指示灯    
+    output reg LED_4 = 1,          // 锁状态信号，LED4亮表示锁处于关闭状态
+    output wire [7:0] ND_EN,       // 数码管显示使能信号
+    output wire [7:0] ND_Num       // 数码管显示数字
+);
+
+    // 状态定义
+    localparam IDLE      = 3'd0; // 空闲/等待状态
+    localparam INPUT1    = 3'd1; // 输入第一位
+    localparam INPUT2    = 3'd2; // 输入第二位
+    localparam INPUT3    = 3'd3; // 输入第三位
+    localparam INPUT4    = 3'd4; // 输入第四位
+    localparam WARNING   = 3'd5; // 报警状态
+    localparam UNLOCKED  = 3'd6; // 开锁状态
+
+    parameter PASSWORD_LENGTH = 4;
+    reg [2:0] key_state_next = 0;
+    reg [3:0] stored_password [0:PASSWORD_LENGTH-1]; // 存储密码
+    reg [3:0] input_password [0:PASSWORD_LENGTH-1];  // 输入密码
+    reg [2:0] key_state = 0; // 输入状态 (0-6)
+
+    // 按键取反（适应按下为低电平）
+    wire key_change_in = ~key_change;
+    wire key_read_in = ~key_read;
+    wire key_delete_in = ~key_delete;
+    wire key_enter_in = ~key_enter;
+    wire key_restart_in = ~key_restart;
+
+    // 初始化密码数组
+    initial begin
+        stored_password[0] = 4'd0;
+        stored_password[1] = 4'd0;
+        stored_password[2] = 4'd0;
+        stored_password[3] = 4'd0;
+        input_password[0] = 4'd0;
+        input_password[1] = 4'd0;
+        input_password[2] = 4'd0;
+        input_password[3] = 4'd0;
+    end
+
+    // 按键消抖寄存器
+    reg [19:0] debounce_cnt = 20'd0;
+    reg key_read_db, key_delete_db, key_enter_db, key_restart_db, key_change_db;
+    reg key_read_r = 1'b0, key_delete_r = 1'b0, key_enter_r = 1'b0, key_restart_r = 1'b0, key_change_r = 1'b0;
+    reg key_read_r_last, key_delete_r_last, key_enter_r_last, key_restart_r_last, key_change_r_last;
+
+    // 边沿检测信号
+    wire key_read_pos = key_read_r && !key_read_r_last;
+    wire key_delete_pos = key_delete_r && !key_delete_r_last;
+    wire key_enter_pos = key_enter_r && !key_enter_r_last;
+    wire key_restart_pos = key_restart_r && !key_restart_r_last;
+    wire key_change_pos = key_change_r && !key_change_r_last;
+
+    // 计时器 (100MHz时钟，实际计时值)
+    reg [26:0] timer_10s = 27'd0;
+    reg [27:0] timer_20s = 28'd0;
+    // wire timer_10s_done = (timer_10s == 27'd999_999_999); // 10秒
+    // wire timer_20s_done = (timer_20s == 28'd1_999_999_999); // 20秒
+
+    // 错误计数器
+    reg [1:0] wrong_times = 2'b0;
+
+    // 按键编码器
+    function automatic [3:0] key_encoder(input [9:0] keys);
+        begin
+            case(keys)
+                10'b0000000001: key_encoder = 4'd0;
+                10'b0000000010: key_encoder = 4'd1;
+                10'b0000000100: key_encoder = 4'd2;
+                10'b0000001000: key_encoder = 4'd3;
+                10'b0000010000: key_encoder = 4'd4;
+                10'b0000100000: key_encoder = 4'd5;
+                10'b0001000000: key_encoder = 4'd6;
+                10'b0010000000: key_encoder = 4'd7;
+                10'b0100000000: key_encoder = 4'd8;
+                10'b1000000000: key_encoder = 4'd9;
+                default: key_encoder = 4'hF;
+            endcase
+        end
+    endfunction
+
+    // 按键消抖处理
+    always @(posedge clk_100MHz) begin
+        key_read_db <= key_read_in;
+        key_delete_db <= key_delete_in;
+        key_enter_db <= key_enter_in;
+        key_restart_db <= key_restart_in;
+        key_change_db <= key_change_in;
+
+        key_read_r_last <= key_read_r;
+        key_delete_r_last <= key_delete_r;
+        key_enter_r_last <= key_enter_r;
+        key_restart_r_last <= key_restart_r;
+        key_change_r_last <= key_change_r;
+
+        if (debounce_cnt == 20'd999_999) begin // 10ms消抖
+            debounce_cnt <= 20'd0;
+            key_read_r <= key_read_db;
+            key_delete_r <= key_delete_db;
+            key_enter_r <= key_enter_db;
+            key_restart_r <= key_restart_db;
+            key_change_r <= key_change_db;
+        end else begin
+            debounce_cnt <= debounce_cnt + 20'd1;
+        end
+    end
+
+    // 时钟分频模块实例化
+    wire clk10khz, clk2hz;
+    CLK CLK (
+        .clk_100MHz(clk_100MHz),
+        .clk10khz(clk10khz),
+        .clk2hz(clk2hz)
+    );
+
+    // 数码管显示模块实例化
+    reg [4:0] num0, num1, num2, num3;
+    reg [7:0] num_sparkle;
+    Display Display (
+        .ND_clk(clk_100MHz),
+        .Num10khz(clk10khz),
+        .flicker2hz(clk2hz),
+        .ND_EN(ND_EN),
+        .ND_Num(ND_Num),
+        .num0(num0),
+        .num1(num1),
+        .num2(num2),
+        .num3(num3),
+        .flicker(num_sparkle),
+        .mode(key_state)
+    );
+
+    // 数码管显示更新逻辑
+    always @(posedge clk_100MHz) begin
+        if (key_state >= INPUT1 && key_state <= INPUT4) begin
+            // 在输入状态下实时显示
+            num0 <= input_password[0];
+            num1 <= input_password[1];
+            num2 <= input_password[2];
+            num3 <= input_password[3];
+        end else if (key_change) begin
+            // 在修改密码状态下显示存储的密码
+            num0 <= stored_password[0];
+            num1 <= stored_password[1];
+            num2 <= stored_password[2];
+            num3 <= stored_password[3];
+        end else begin
+            // 空闲状态下显示默认值
+            num0 <= 4'd0;
+            num1 <= 4'd0;
+            num2 <= 4'd0;
+            num3 <= 4'd0;
+        end
+    end
+
+    // 主状态机
+    always @(posedge clk_100MHz) begin
+        key_change_state <= key_change;
+        key_normal_state <= ~key_change;
+
+        if ((key_state >= INPUT1) && (key_state <= INPUT4)) begin
+            timer_10s <= timer_10s + 27'd1;
+            // if (timer_10s_done) begin
+            //     timer_10s <= 27'd0;
+            // end
+        end else begin
+            timer_10s <= 27'd0;
+        end
+
+        if (key_state == UNLOCKED) begin
+            timer_20s <= timer_20s + 28'd1;
+            // if (timer_20s_done) begin
+            //     timer_20s <= 28'd0;
+            // end
+        end else begin
+            timer_20s <= 28'd0;
+        end
+    end
+
+    // 状态转移逻辑
+    always @* begin
+        key_state_next = key_state;
+        key_right = 1'b0;
+        key_wrong = 1'b0;
+        key_warn = 1'b0;
+        
+        case(key_state)
+            IDLE: begin
+                if (key_change_pos) begin
+                    // 进入修改密码模式
+                    key_state_next = INPUT1;
+                end else if (key_read_pos) begin
+                    // 开始输入密码
+                    input_password[0] = key_encoder(key_input);
+                    key_state_next = INPUT1;
+                end
+            end
+
+            INPUT1: begin
+                num_sparkle = 8'b00000001;
+                // if (timer_10s_done) begin
+                //     key_state_next = IDLE;
+                // end else 
+                if (key_delete_pos) begin
+                    key_state_next = IDLE;
+                end else if (key_read_pos) begin
+                    if (key_change) begin
+                        stored_password[1] = key_encoder(key_input);
+                    end else begin
+                        input_password[1] = key_encoder(key_input);
+                    end
+                    key_state_next = INPUT2;
+                end
+            end
+
+            INPUT2: begin
+                num_sparkle = 8'b00000010;
+                // if (timer_10s_done) begin
+                //     key_state_next = IDLE;
+                // end else
+                 if (key_delete_pos) begin
+                    key_state_next = INPUT1;
+                    if (key_change) stored_password[1] = 4'd0;
+                    else input_password[1] = 4'd0;
+                end else if (key_read_pos) begin
+                    if (key_change) begin
+                        stored_password[2] = key_encoder(key_input);
+                    end else begin
+                        input_password[2] = key_encoder(key_input);
+                    end
+                    key_state_next = INPUT3;
+                end
+            end
+
+            INPUT3: begin
+                num_sparkle = 8'b00000100;
+                // if (timer_10s_done) begin
+                //     key_state_next = IDLE;
+                // end else 
+                if (key_delete_pos) begin
+                    key_state_next = INPUT2;
+                    if (key_change) stored_password[2] = 4'd0;
+                    else input_password[2] = 4'd0;
+                end else if (key_read_pos) begin
+                    if (key_change) begin
+                        stored_password[3] = key_encoder(key_input);
+                    end else begin
+                        input_password[3] = key_encoder(key_input);
+                    end
+                    key_state_next = INPUT4;
+                end
+            end
+
+            INPUT4: begin
+                num_sparkle = 8'b00001000;
+                // if (timer_10s_done) begin
+                //     key_state_next = IDLE;
+                // end else 
+                if (key_delete_pos) begin
+                    key_state_next = INPUT3;
+                    if (key_change) stored_password[3] = 4'd0;
+                    else input_password[3] = 4'd0;
+                end else if (key_enter_pos) begin
+                    if (key_change) begin
+                        key_state_next = IDLE;
+                    end else begin
+                        if ((input_password[0] == stored_password[0]) &&
+                            (input_password[1] == stored_password[1]) &&
+                            (input_password[2] == stored_password[2]) &&
+                            (input_password[3] == stored_password[3])) begin
+                            key_right = 1'b1;
+                            wrong_times = 2'b0;
+                            key_state_next = UNLOCKED;
+                        end else begin
+                            key_wrong = 1'b1;
+                            wrong_times = wrong_times + 2'b1;
+                            if (wrong_times == 2'd2) begin
+                                key_state_next = WARNING;
+                            end else begin
+                                key_state_next = IDLE;
+                            end
+                        end
+                    end
+                end
+            end
+
+            WARNING: begin
+                key_warn = 1'b1;
+                if (key_restart_pos) begin
+                    key_warn = 1'b0;
+                    key_state_next = IDLE;
+                    wrong_times = 2'b0;
+                end
+            end
+
+            UNLOCKED: begin
+                key_right = 1'b1;
+                LED_4 = 1'b0; // 开锁状态，LED4灭
+                // if (timer_20s_done || key_enter_pos) begin
+                //     key_right = 1'b0;
+                //     LED_4 = 1'b1; // 重新上锁
+                //     key_state_next = IDLE;
+                // end
+                if ( key_enter_pos) begin
+                    key_right = 1'b0;
+                    LED_4 = 1'b1; // 重新上锁
+                    key_state_next = IDLE;
+                end
+            end
+
+            default: key_state_next = IDLE;
+        endcase
+    end
+
+    // 状态更新
+    always @(posedge clk_100MHz) begin
+        key_state <= key_state_next;
+    end
+endmodule
+
+module CLK(
+    input clk_100MHz,
+    output reg clk10khz,
+    output reg clk2hz
+);
+    parameter N10k = 5000;        // 100MHz/10kHz/2 = 5000
+    parameter N2 = 25000000;      // 100MHz/2Hz/2 = 25,000,000
+    reg [15:0] Count10k = 0;
+    reg [24:0] Count2 = 0;
+
+    always @(posedge clk_100MHz) begin
+        // 10kHz时钟生成
+        if (Count10k >= N10k - 1) begin
+            Count10k <= 0;
+            clk10khz <= ~clk10khz;
+        end else begin
+            Count10k <= Count10k + 1;
+        end
+
+        // 2Hz时钟生成
+        if (Count2 >= N2 - 1) begin
+            Count2 <= 0;
+            clk2hz <= ~clk2hz;
+        end else begin
+            Count2 <= Count2 + 1;
+        end
+    end
+endmodule
+
+module Display(
+    input wire ND_clk,
+    input wire Num10khz,
+    input wire flicker2hz,
+    output reg [7:0] ND_EN,
+    output reg [7:0] ND_Num,
+    input wire [4:0] num0,
+    input wire [4:0] num1,
+    input wire [4:0] num2,
+    input wire [4:0] num3,
+    input wire [7:0] flicker,
+    input wire [2:0] mode
+);
+    localparam IDLE = 3'd0, INPUT1 = 3'd1, INPUT2 = 3'd2, INPUT3 = 3'd3, 
+               INPUT4 = 3'd4, WARNING = 3'd5, UNLOCKED = 3'd6;
+               
+    // 共阳极数码管编码 (0亮1灭)
+    parameter N0 = 8'b11000000;  // 0
+    parameter N1 = 8'b11111001;  // 1
+    parameter N2 = 8'b10100100;  // 2
+    parameter N3 = 8'b10110000;  // 3
+    parameter N4 = 8'b10011001;  // 4
+    parameter N5 = 8'b10010010;  // 5
+    parameter N6 = 8'b10000010;  // 6
+    parameter N7 = 8'b11111000;  // 7
+    parameter N8 = 8'b10000000;  // 8
+    parameter N9 = 8'b10010000;  // 9
+    
+    // 字母编码
+    parameter VH = 8'b10001001;  // H
+    parameter VE = 8'b10000110;  // E
+    parameter VL = 8'b11000111;  // L
+    parameter Vo = 8'b10100011;  // o
+    parameter V_ = 8'b10111111;  // -
+    parameter VC = 8'b11000110;  // C
+    parameter VS = 8'b10010010;  // S
+    parameter VU = 8'b11000001;  // U
+    parameter VA = 8'b10001000;  // A
+    parameter VF = 8'b10001110;  // F
+
+    reg [7:0] NUM0, NUM1, NUM2, NUM3;
+    reg [2:0] ENcount = 0;
+
+    // 数字到段码的转换
+    always @* begin
+        case (num0)
+            0: NUM0 = N0; 1: NUM0 = N1; 2: NUM0 = N2; 3: NUM0 = N3; 4: NUM0 = N4; 5: NUM0 = N5;
+            6: NUM0 = N6; 7: NUM0 = N7; 8: NUM0 = N8; 9: NUM0 = N9; 
+            default: NUM0 = V_; // 默认显示横杠
+        endcase
+        case (num1)
+            0: NUM1 = N0; 1: NUM1 = N1; 2: NUM1 = N2; 3: NUM1 = N3; 4: NUM1 = N4; 5: NUM1 = N5;
+            6: NUM1 = N6; 7: NUM1 = N7; 8: NUM1 = N8; 9: NUM1 = N9; 
+            default: NUM1 = V_;
+        endcase
+        case (num2)
+            0: NUM2 = N0; 1: NUM2 = N1; 2: NUM2 = N2; 3: NUM2 = N3; 4: NUM2 = N4; 5: NUM2 = N5;
+            6: NUM2 = N6; 7: NUM2 = N7; 8: NUM2 = N8; 9: NUM2 = N9; 
+            default: NUM2 = V_;
+        endcase
+        case (num3)
+            0: NUM3 = N0; 1: NUM3 = N1; 2: NUM3 = N2; 3: NUM3 = N3; 4: NUM3 = N4; 5: NUM3 = N5;
+            6: NUM3 = N6; 7: NUM3 = N7; 8: NUM3 = N8; 9: NUM3 = N9; 
+            default: NUM3 = V_;
+        endcase
+    end
+
+    // 数码管扫描显示
+    always @(posedge Num10khz) begin
+        ENcount <= (ENcount == 3'd7) ? 3'd0 : ENcount + 3'd1;
+        
+        case(mode)
+            IDLE: begin
+                // 显示"HELL"
+                case (ENcount[1:0])
+                    2'b00: begin ND_EN <= 8'b01111111; ND_Num <= VH; end  // H
+                    2'b01: begin ND_EN <= 8'b10111111; ND_Num <= VE; end  // E
+                    2'b10: begin ND_EN <= 8'b11011111; ND_Num <= VL; end  // L
+                    2'b11: begin ND_EN <= 8'b11101111; ND_Num <= VL; end  // L
+                    
+                    default: begin ND_EN <= 8'b11111111; ND_Num <= V_; end
+                endcase
+            end
+            
+            INPUT1: begin
+                ND_EN <= (flicker2hz && flicker[0]) ? 8'b01111111 : 8'b11111111;
+                ND_Num <= NUM0;
+            end
+            
+            INPUT2: begin
+                ND_EN <= (flicker2hz && flicker[1]) ? 8'b10111111 : 8'b11111111;
+                ND_Num <= NUM1;
+            end
+            
+            INPUT3: begin
+                ND_EN <= (flicker2hz && flicker[2]) ? 8'b11011111 : 8'b11111111;
+                ND_Num <= NUM2;
+            end
+            
+            INPUT4: begin
+                ND_EN <= (flicker2hz && flicker[3]) ? 8'b11101111 : 8'b11111111;
+                ND_Num <= NUM3;
+            end
+            
+            UNLOCKED: begin
+                // 显示"SUCCESS"
+                case (ENcount)
+                    3'd0: begin ND_EN <= 8'b01111111; ND_Num <= VS; end  // S
+                    3'd1: begin ND_EN <= 8'b10111111; ND_Num <= VU; end  // U
+                    3'd2: begin ND_EN <= 8'b11011111; ND_Num <= VC; end  // C
+                    3'd3: begin ND_EN <= 8'b11101111; ND_Num <= VC; end  // C
+                    3'd4: begin ND_EN <= 8'b11110111; ND_Num <= VE; end  // E
+                    3'd5: begin ND_EN <= 8'b11111011; ND_Num <= VS; end  // S
+                    3'd6: begin ND_EN <= 8'b11111101; ND_Num <= VS; end  // S
+                    3'd7: begin ND_EN <= 8'b11111110; ND_Num <= V_; end  // 空格
+                endcase
+            end
+            
+            WARNING: begin
+                // 显示"FAIL"
+                case (ENcount[1:0])
+                    2'b00: begin ND_EN <= 8'b11111110; ND_Num <= VF; end  // F
+                    2'b01: begin ND_EN <= 8'b11111101; ND_Num <= VA; end  // A
+                    2'b10: begin ND_EN <= 8'b11111011; ND_Num <= V_; end  // 空格
+                    2'b11: begin ND_EN <= 8'b11110111; ND_Num <= VL; end  // L
+                endcase
+            end
+            
+            default: begin
+                ND_EN <= 8'b11111111;
+                ND_Num <= V_;
+            end
+        endcase
+    end
+endmodule
