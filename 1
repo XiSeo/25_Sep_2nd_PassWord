@@ -13,7 +13,7 @@ module PassWord(
     output reg key_warn = 0,       // 报警状态
     output reg key_change_state = 0, // 修改状态指示灯
     output reg key_normal_state = 0, // 正常状态指示灯    
-    output reg LED_4 = 1,          // 锁状态信号，LED4亮表示锁处于关闭状态
+    output reg LED_4 = 0,          // 锁状态信号，LED4亮表示锁处于关闭状态
     output wire [7:0] ND_EN,       // 数码管显示使能信号
     output wire [7:0] ND_Num       // 数码管显示数字
 );
@@ -34,7 +34,6 @@ module PassWord(
     reg [2:0] key_state = 0; // 输入状态 (0-6)
 
     // 按键取反（适应按下为低电平）
-    wire key_change_in = ~key_change;
     wire key_read_in = ~key_read;
     wire key_delete_in = ~key_delete;
     wire key_enter_in = ~key_enter;
@@ -54,16 +53,15 @@ module PassWord(
 
     // 按键消抖寄存器
     reg [19:0] debounce_cnt = 20'd0;
-    reg key_read_db, key_delete_db, key_enter_db, key_restart_db, key_change_db;
-    reg key_read_r = 1'b0, key_delete_r = 1'b0, key_enter_r = 1'b0, key_restart_r = 1'b0, key_change_r = 1'b0;
-    reg key_read_r_last, key_delete_r_last, key_enter_r_last, key_restart_r_last, key_change_r_last;
+    reg key_read_db, key_delete_db, key_enter_db, key_restart_db;
+    reg key_read_r = 1'b0, key_delete_r = 1'b0, key_enter_r = 1'b0, key_restart_r = 1'b0;
+    reg key_read_r_last, key_delete_r_last, key_enter_r_last, key_restart_r_last;
 
     // 边沿检测信号
     wire key_read_pos = key_read_r && !key_read_r_last;
     wire key_delete_pos = key_delete_r && !key_delete_r_last;
     wire key_enter_pos = key_enter_r && !key_enter_r_last;
     wire key_restart_pos = key_restart_r && !key_restart_r_last;
-    wire key_change_pos = key_change_r && !key_change_r_last;
 
     // 计时器 (100MHz时钟，实际计时值)
     reg [26:0] timer_10s = 27'd0;
@@ -99,13 +97,11 @@ module PassWord(
         key_delete_db <= key_delete_in;
         key_enter_db <= key_enter_in;
         key_restart_db <= key_restart_in;
-        key_change_db <= key_change_in;
 
         key_read_r_last <= key_read_r;
         key_delete_r_last <= key_delete_r;
         key_enter_r_last <= key_enter_r;
         key_restart_r_last <= key_restart_r;
-        key_change_r_last <= key_change_r;
 
         if (debounce_cnt == 20'd999_999) begin // 10ms消抖
             debounce_cnt <= 20'd0;
@@ -113,7 +109,6 @@ module PassWord(
             key_delete_r <= key_delete_db;
             key_enter_r <= key_enter_db;
             key_restart_r <= key_restart_db;
-            key_change_r <= key_change_db;
         end else begin
             debounce_cnt <= debounce_cnt + 20'd1;
         end
@@ -173,36 +168,45 @@ module PassWord(
         key_normal_state <= ~key_change;
 
         if ((key_state >= INPUT1) && (key_state <= INPUT4)) begin
-            timer_10s <= timer_10s + 27'd1;
+            //timer_10s <= timer_10s + 27'd1;
             // if (timer_10s_done) begin
             //     timer_10s <= 27'd0;
             // end
         end else begin
-            timer_10s <= 27'd0;
+            //timer_10s <= 27'd0;
         end
 
         if (key_state == UNLOCKED) begin
-            timer_20s <= timer_20s + 28'd1;
+           // timer_20s <= timer_20s + 28'd1;
             // if (timer_20s_done) begin
             //     timer_20s <= 28'd0;
             // end
         end else begin
-            timer_20s <= 28'd0;
+           // timer_20s <= 28'd0;
         end
     end
 
     // 状态转移逻辑
     always @* begin
         key_state_next = key_state;
-        key_right = 1'b0;
-        key_wrong = 1'b0;
-        key_warn = 1'b0;
+        //  key_right = 1'b0;
+        //  key_wrong = 1'b0;
+        //  key_warn = 1'b0;
         
         case(key_state)
             IDLE: begin
-                if (key_change_pos) begin
+                key_right <= 1'b0;
+                key_wrong <= 1'b0;
+                key_warn <= 1'b0;
+                LED_4<=1'b1;
+
+                if (key_change) begin
                     // 进入修改密码模式
+                    if (key_read_pos) begin
+                    // 开始输入密码
+                    stored_password[0] = key_encoder(key_input);
                     key_state_next = INPUT1;
+                    end
                 end else if (key_read_pos) begin
                     // 开始输入密码
                     input_password[0] = key_encoder(key_input);
@@ -217,6 +221,8 @@ module PassWord(
                 // end else 
                 if (key_delete_pos) begin
                     key_state_next = IDLE;
+                    if (key_change) stored_password[0] = 4'd0;
+                    else input_password[0] = 4'd0;
                 end else if (key_read_pos) begin
                     if (key_change) begin
                         stored_password[1] = key_encoder(key_input);
@@ -282,13 +288,12 @@ module PassWord(
                             (input_password[1] == stored_password[1]) &&
                             (input_password[2] == stored_password[2]) &&
                             (input_password[3] == stored_password[3])) begin
-                            key_right = 1'b1;
                             wrong_times = 2'b0;
                             key_state_next = UNLOCKED;
                         end else begin
                             key_wrong = 1'b1;
                             wrong_times = wrong_times + 2'b1;
-                            if (wrong_times == 2'd2) begin
+                            if (wrong_times == 2'd3) begin
                                 key_state_next = WARNING;
                             end else begin
                                 key_state_next = IDLE;
