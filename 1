@@ -8,12 +8,12 @@ module PassWord(
     input key_enter,       // 确认键（按下为高电平）
     input key_restart,     // 管理员重启（按下为高电平）
     input clk_100MHz,
-    output reg key_right = 0,      // 密码正确
-    output reg key_wrong = 0,     // 密码错误
-    output reg key_warn = 0,       // 报警状态
+    output reg key_right ,      // 密码正确
+    output reg key_wrong ,     // 密码错误
+    output reg key_warn ,       // 报警状态
     output reg key_change_state = 0, // 修改状态指示灯
     output reg key_normal_state = 0, // 正常状态指示灯    
-    output reg LED_4 = 1,          // 锁状态信号，LED4亮表示锁处于关闭状态
+    //output reg LED_4 = 1,          // 锁状态信号，LED4亮表示锁处于关闭状态
     output wire [7:0] ND_EN,       // 数码管显示使能信号
     output wire [7:0] ND_Num       // 数码管显示数字
 );
@@ -29,7 +29,6 @@ module PassWord(
 
     parameter PASSWORD_LENGTH = 4;
     reg [2:0] key_state_next = 0;
-    reg [15:0] t = 0;               // 定时计数器
     reg [3:0] stored_password [0:PASSWORD_LENGTH-1]; // 存储密码
     reg [3:0] input_password [0:PASSWORD_LENGTH-1];  // 输入密码
     reg [2:0] key_state = 0; // 输入状态 (0-6)
@@ -62,14 +61,14 @@ module PassWord(
     // 计时器 (100MHz时钟，实际计时值)
     reg [26:0] timer_10s = 27'd0;
     reg [27:0] timer_20s = 28'd0;
-    // wire timer_10s_done = (timer_10s == 27'd999_999_999); // 10秒
-    // wire timer_20s_done = (timer_20s == 28'd1_999_999_999); // 20秒
+    wire timer_10s_done = (timer_10s == 1000000000); // 10秒
+    wire timer_20s_done = (timer_20s == 2000000000); // 20秒
 
     // 错误计数器
     reg [1:0] wrong_times = 2'b0;
 
     // 按键编码器
-    function automatic [3:0] key_encoder(input [9:0] keys);
+    function automatic  key_encoder(input [9:0] keys);
         begin
             case(keys)
                 10'b0000000001: key_encoder = 4'd0;
@@ -111,7 +110,7 @@ module PassWord(
     end
     // 时钟分频模块实例化
     wire clk10khz, clk2hz;
-    CLK CLK (
+    CLK R_CLK (
         .clk_100MHz(clk_100MHz),
         .clk10khz(clk10khz),
         .clk2hz(clk2hz)
@@ -120,7 +119,7 @@ module PassWord(
     // 数码管显示模块实例化
     reg [4:0] num0, num1, num2, num3;
     reg [7:0] num_sparkle;
-    Display Display (
+    Display R_Display (
         .ND_clk(clk_100MHz),
         .Num10khz(clk10khz),
         .flicker2hz(clk2hz),
@@ -132,6 +131,13 @@ module PassWord(
         .num3(num3),
         .flicker(num_sparkle),
         .mode(key_state)
+        // .IDLE(IDLE),
+        // .INPUT1(INPUT1),
+        // .INPUT2(INPUT2),
+        // .INPUT3(INPUT3),
+        // .INPUT4(INPUT4),
+        // .WARNING(WARNING),
+        // .UNLOCKED(UNLOCKED)
     );
 
     // 数码管显示更新逻辑
@@ -157,49 +163,47 @@ module PassWord(
         key_normal_state <= ~key_change;
 
         if ((key_state >= IDLE) && (key_state <= INPUT4)) begin
-            //timer_10s <= timer_10s + 27'd1;
-            // if (timer_10s_done) begin
-            //     timer_10s <= 27'd0;
-            // end
+            timer_10s <= timer_10s + 27'd1;
+            if (timer_10s_done) begin
+                timer_10s <= 27'd0;
+            end
         end else begin
-            //timer_10s <= 27'd0;
+            timer_10s <= 27'd0;
         end
 
         if (key_state == UNLOCKED) begin
-           // timer_20s <= timer_20s + 28'd1;
-            // if (timer_20s_done) begin
-            //     timer_20s <= 28'd0;
-            // end
+           timer_20s <= timer_20s + 28'd1;
+            if (timer_20s_done) begin
+                timer_20s <= 28'd0;
+            end
         end else begin
-           // timer_20s <= 28'd0;
+            timer_20s <= 28'd0;
         end
     end
 
     // 状态转移逻辑
-    always @* begin
-        key_state_next = key_state;
-        //  key_right = 1'b0;
-        //  key_wrong = 1'b0;
-        //  key_warn = 1'b0;
+    always @(posedge clk_100MHz) begin
+        //key_state_next = key_state;
+         //key_right = 1'b0;
+        // key_wrong = 1'b0;
+        // key_warn = 1'b0;
         
         case(key_state)
             IDLE: begin
                 key_right <= 1'b0;
                 key_wrong <= 1'b0;
                 key_warn <= 1'b0;
-                LED_4<=1'b1;
+                //LED_4<=1'b1;
 
                 if (key_change) begin
                     // 进入修改密码模式
                     if (key_read_pos) begin
                     // 开始输入密码
-                    t <= 0;
                     stored_password[0] = key_encoder(key_input);
                     key_state_next = INPUT1;
                     end
                 end else if (key_read_pos) begin
                     // 开始输入密码
-                    t <= 0;
                     input_password[0] = key_encoder(key_input);
                     key_state_next = INPUT1;
                 end
@@ -207,16 +211,14 @@ module PassWord(
 
             INPUT1: begin
                 num_sparkle = 8'b00000001;
-                // if (timer_10s_done) begin
-                //     key_state_next = IDLE;
-                // end else 
+                if (timer_10s_done) begin
+                    key_state_next = IDLE;
+                end else 
                 if (key_delete_pos) begin
-                    t <= 0;
                     key_state_next = IDLE;
                     if (key_change) stored_password[0] = 4'd0;
                     else input_password[0] = 4'd0;
                 end else if (key_read_pos) begin
-                    t <= 0;
                     if (key_change) begin
                         stored_password[1] = key_encoder(key_input);
                     end else begin
@@ -228,16 +230,14 @@ module PassWord(
 
             INPUT2: begin
                 num_sparkle = 8'b00000010;
-                // if (timer_10s_done) begin
-                //     key_state_next = IDLE;
-                // end else
+                if (timer_10s_done) begin
+                    key_state_next = IDLE;
+                end else
                  if (key_delete_pos) begin
-                    t <= 0;
                     key_state_next = INPUT1;
                     if (key_change) stored_password[1] = 4'd0;
                     else input_password[1] = 4'd0;
                 end else if (key_read_pos) begin
-                    t <= 0;
                     if (key_change) begin
                         stored_password[2] = key_encoder(key_input);
                     end else begin
@@ -249,16 +249,14 @@ module PassWord(
 
             INPUT3: begin
                 num_sparkle = 8'b00000100;
-                // if (timer_10s_done) begin
-                //     key_state_next = IDLE;
-                // end else 
+                if (timer_10s_done) begin
+                    key_state_next = IDLE;
+                end else 
                 if (key_delete_pos) begin
-                    t <= 0;
                     key_state_next = INPUT2;
                     if (key_change) stored_password[2] = 4'd0;
                     else input_password[2] = 4'd0;
                 end else if (key_read_pos) begin
-                    t <= 0;
                     if (key_change) begin
                         stored_password[3] = key_encoder(key_input);
                     end else begin
@@ -270,16 +268,14 @@ module PassWord(
 
             INPUT4: begin
                 num_sparkle = 8'b00001000;
-                // if (timer_10s_done) begin
-                //     key_state_next = IDLE;
-                // end else 
+                if (timer_10s_done) begin
+                    key_state_next = IDLE;
+                end else 
                 if (key_delete_pos) begin
-                    t <= 0;
                     key_state_next = INPUT3;
                     if (key_change) stored_password[3] = 4'd0;
                     else input_password[3] = 4'd0;
                 end else if (key_enter_pos) begin
-                    t <= 0;
                     if (key_change) begin
                         key_state_next = IDLE;
                     end else begin
@@ -305,7 +301,6 @@ module PassWord(
             WARNING: begin
                 key_warn = 1'b1;
                 if (key_restart_pos) begin
-                    t <= 0;
                     key_warn = 1'b0;
                     key_state_next = IDLE;
                     wrong_times = 2'b0;
@@ -314,35 +309,25 @@ module PassWord(
 
             UNLOCKED: begin
                 key_right = 1'b1;
-                LED_4 = 1'b0; // 开锁状态，LED4灭
-                // if (timer_20s_done || key_enter_pos) begin
-                //     key_right = 1'b0;
-                //     LED_4 = 1'b1; // 重新上锁
-                //     key_state_next = IDLE;
-                // end
-                if ( key_enter_pos) begin
-                    t <= 0;
+                //LED_4 = 1'b0; // 开锁状态，LED4灭
+                if (timer_20s_done || key_enter_pos) begin
                     key_right = 1'b0;
-                    LED_4 = 1'b1; // 重新上锁
+                    //LED_4 = 1'b1; // 重新上锁
                     key_state_next = IDLE;
                 end
+                // if ( key_enter_pos) begin
+                //     key_right = 1'b0;
+                //     //LED_4 = 1'b1; // 重新上锁
+                //     key_state_next = IDLE;
+                // end
             end
-
-            default: key_state_next = IDLE;
         endcase
-
     end
 
     // 状态更新
     always @(posedge clk_100MHz) begin
+        if(key_state!=key_state_next)
         key_state <= key_state_next;
-        t <= t + 1;  // 计时器递增
-            
-            if(t >= 16'd1000000)  // 超时判断（10秒）
-            begin
-                key_state = IDLE;  // 返回初始状态
-                t <= 0;
-            end 
     end
 endmodule
 
@@ -477,7 +462,7 @@ module Display(
                     7: begin ND_EN <= 8'b01111111; ND_Num <= VS; end
                 endcase
             end
-            default: begin
+            WARNING: begin
                 ND_EN <= 8'b11111111;
                 ND_Num <= V0;
             end
