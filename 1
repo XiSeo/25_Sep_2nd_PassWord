@@ -29,6 +29,7 @@ module PassWord(
 
     parameter PASSWORD_LENGTH = 4;
     reg [2:0] key_state_next = 0;
+    reg [15:0] t = 0;               // 定时计数器
     reg [3:0] stored_password [0:PASSWORD_LENGTH-1]; // 存储密码
     reg [3:0] input_password [0:PASSWORD_LENGTH-1];  // 输入密码
     reg [2:0] key_state = 0; // 输入状态 (0-6)
@@ -192,11 +193,13 @@ module PassWord(
                     // 进入修改密码模式
                     if (key_read_pos) begin
                     // 开始输入密码
+                    t <= 0;
                     stored_password[0] = key_encoder(key_input);
                     key_state_next = INPUT1;
                     end
                 end else if (key_read_pos) begin
                     // 开始输入密码
+                    t <= 0;
                     input_password[0] = key_encoder(key_input);
                     key_state_next = INPUT1;
                 end
@@ -208,10 +211,12 @@ module PassWord(
                 //     key_state_next = IDLE;
                 // end else 
                 if (key_delete_pos) begin
+                    t <= 0;
                     key_state_next = IDLE;
                     if (key_change) stored_password[0] = 4'd0;
                     else input_password[0] = 4'd0;
                 end else if (key_read_pos) begin
+                    t <= 0;
                     if (key_change) begin
                         stored_password[1] = key_encoder(key_input);
                     end else begin
@@ -227,10 +232,12 @@ module PassWord(
                 //     key_state_next = IDLE;
                 // end else
                  if (key_delete_pos) begin
+                    t <= 0;
                     key_state_next = INPUT1;
                     if (key_change) stored_password[1] = 4'd0;
                     else input_password[1] = 4'd0;
                 end else if (key_read_pos) begin
+                    t <= 0;
                     if (key_change) begin
                         stored_password[2] = key_encoder(key_input);
                     end else begin
@@ -246,10 +253,12 @@ module PassWord(
                 //     key_state_next = IDLE;
                 // end else 
                 if (key_delete_pos) begin
+                    t <= 0;
                     key_state_next = INPUT2;
                     if (key_change) stored_password[2] = 4'd0;
                     else input_password[2] = 4'd0;
                 end else if (key_read_pos) begin
+                    t <= 0;
                     if (key_change) begin
                         stored_password[3] = key_encoder(key_input);
                     end else begin
@@ -265,10 +274,12 @@ module PassWord(
                 //     key_state_next = IDLE;
                 // end else 
                 if (key_delete_pos) begin
+                    t <= 0;
                     key_state_next = INPUT3;
                     if (key_change) stored_password[3] = 4'd0;
                     else input_password[3] = 4'd0;
                 end else if (key_enter_pos) begin
+                    t <= 0;
                     if (key_change) begin
                         key_state_next = IDLE;
                     end else begin
@@ -294,6 +305,7 @@ module PassWord(
             WARNING: begin
                 key_warn = 1'b1;
                 if (key_restart_pos) begin
+                    t <= 0;
                     key_warn = 1'b0;
                     key_state_next = IDLE;
                     wrong_times = 2'b0;
@@ -309,6 +321,7 @@ module PassWord(
                 //     key_state_next = IDLE;
                 // end
                 if ( key_enter_pos) begin
+                    t <= 0;
                     key_right = 1'b0;
                     LED_4 = 1'b1; // 重新上锁
                     key_state_next = IDLE;
@@ -317,11 +330,19 @@ module PassWord(
 
             default: key_state_next = IDLE;
         endcase
+
     end
 
     // 状态更新
     always @(posedge clk_100MHz) begin
         key_state <= key_state_next;
+        t <= t + 1;  // 计时器递增
+            
+            if(t >= 16'd1000000)  // 超时判断（10秒）
+            begin
+                key_state = IDLE;  // 返回初始状态
+                t <= 0;
+            end 
     end
 endmodule
 
