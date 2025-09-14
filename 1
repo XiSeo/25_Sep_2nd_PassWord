@@ -119,6 +119,7 @@ module PassWord(
     // 数码管显示模块实例化
     reg [4:0] num0, num1, num2, num3;
     reg [7:0] num_sparkle;
+
     Display R_Display (
         .ND_clk(clk_100MHz),
         .Num10khz(clk10khz),
@@ -162,23 +163,23 @@ module PassWord(
         key_change_state <= key_change;
         key_normal_state <= ~key_change;
 
-        if ((key_state >= IDLE) && (key_state <= INPUT4)) begin
-            timer_10s <= timer_10s + 27'd1;
-            if (timer_10s_done) begin
-                timer_10s <= 27'd0;
-            end
-        end else begin
-            timer_10s <= 27'd0;
-        end
+        // if ((key_state >= IDLE) && (key_state <= INPUT4)) begin
+        //     timer_10s <= timer_10s + 27'd1;
+        //     if (timer_10s_done) begin
+        //         timer_10s <= 27'd0;
+        //     end
+        // end else begin
+        //     timer_10s <= 27'd0;
+        // end
 
-        if (key_state == UNLOCKED) begin
-           timer_20s <= timer_20s + 28'd1;
-            if (timer_20s_done) begin
-                timer_20s <= 28'd0;
-            end
-        end else begin
-            timer_20s <= 28'd0;
-        end
+        // if (key_state == UNLOCKED) begin
+        //    timer_20s <= timer_20s + 28'd1;
+        //     if (timer_20s_done) begin
+        //         timer_20s <= 28'd0;
+        //     end
+        // end else begin
+        //     timer_20s <= 28'd0;
+        // end
     end
 
     // 状态转移逻辑
@@ -191,8 +192,8 @@ module PassWord(
         case(key_state)
             IDLE: begin
                 key_right <= 1'b0;
-                key_wrong <= 1'b0;
                 key_warn <= 1'b0;
+                timer_10s<=0;
                 //LED_4<=1'b1;
 
                 if (key_change) begin
@@ -210,14 +211,17 @@ module PassWord(
             end
 
             INPUT1: begin
+                key_wrong<=1'b0;
                 num_sparkle = 8'b00000001;
-                if (timer_10s_done) begin
-                    key_state_next = IDLE;
-                end else 
+                if (timer_10s!=1000000000) begin
+                    timer_10s<=timer_10s+1;
+                end else begin 
+                    key_state_next = IDLE;    
+                end
                 if (key_delete_pos) begin
-                    key_state_next = IDLE;
                     if (key_change) stored_password[0] = 4'd0;
                     else input_password[0] = 4'd0;
+                    key_state_next = IDLE;
                 end else if (key_read_pos) begin
                     if (key_change) begin
                         stored_password[1] = key_encoder(key_input);
@@ -229,14 +233,16 @@ module PassWord(
             end
 
             INPUT2: begin
-                num_sparkle = 8'b00000010;
-                if (timer_10s_done) begin
-                    key_state_next = IDLE;
-                end else
+                //num_sparkle = 8'b00000010;
+                if (timer_10s!=1000000000) begin
+                    timer_10s<=timer_10s+1;
+                end else begin 
+                    key_state_next = IDLE;    
+                end
                  if (key_delete_pos) begin
-                    key_state_next = INPUT1;
                     if (key_change) stored_password[1] = 4'd0;
                     else input_password[1] = 4'd0;
+                    key_state_next = INPUT1;
                 end else if (key_read_pos) begin
                     if (key_change) begin
                         stored_password[2] = key_encoder(key_input);
@@ -248,14 +254,16 @@ module PassWord(
             end
 
             INPUT3: begin
-                num_sparkle = 8'b00000100;
-                if (timer_10s_done) begin
-                    key_state_next = IDLE;
-                end else 
+                //num_sparkle = 8'b00000100;
+                if (timer_10s!=1000000000) begin
+                    timer_10s<=timer_10s+1;
+                end else begin 
+                    key_state_next = IDLE;    
+                end
                 if (key_delete_pos) begin
-                    key_state_next = INPUT2;
                     if (key_change) stored_password[2] = 4'd0;
                     else input_password[2] = 4'd0;
+                    key_state_next = INPUT2;
                 end else if (key_read_pos) begin
                     if (key_change) begin
                         stored_password[3] = key_encoder(key_input);
@@ -267,14 +275,16 @@ module PassWord(
             end
 
             INPUT4: begin
-                num_sparkle = 8'b00001000;
-                if (timer_10s_done) begin
-                    key_state_next = IDLE;
-                end else 
+                //num_sparkle = 8'b00001000;
+                if (timer_10s!=1000000000) begin
+                    timer_10s<=timer_10s+1;
+                end else begin 
+                    key_state_next = IDLE;    
+                end
                 if (key_delete_pos) begin
-                    key_state_next = INPUT3;
                     if (key_change) stored_password[3] = 4'd0;
                     else input_password[3] = 4'd0;
+                    key_state_next = INPUT3;
                 end else if (key_enter_pos) begin
                     if (key_change) begin
                         key_state_next = IDLE;
@@ -283,7 +293,6 @@ module PassWord(
                             (input_password[1] == stored_password[1]) &&
                             (input_password[2] == stored_password[2]) &&
                             (input_password[3] == stored_password[3])) begin
-                            wrong_times = 2'b0;
                             key_state_next = UNLOCKED;
                         end else begin
                             key_wrong = 1'b1;
@@ -301,25 +310,30 @@ module PassWord(
             WARNING: begin
                 key_warn = 1'b1;
                 if (key_restart_pos) begin
-                    key_warn = 1'b0;
                     key_state_next = IDLE;
                     wrong_times = 2'b0;
+                    key_warn=0;
                 end
             end
 
             UNLOCKED: begin
+                wrong_times = 2'b0;
                 key_right = 1'b1;
                 //LED_4 = 1'b0; // 开锁状态，LED4灭
-                if (timer_20s_done || key_enter_pos) begin
+                if ((timer_20s==2000000000) ) begin
                     key_right = 1'b0;
                     //LED_4 = 1'b1; // 重新上锁
                     key_state_next = IDLE;
+                    timer_20s=0;
+                end else begin
+                    timer_20s=timer_20s+1;
                 end
-                // if ( key_enter_pos) begin
-                //     key_right = 1'b0;
-                //     //LED_4 = 1'b1; // 重新上锁
-                //     key_state_next = IDLE;
-                // end
+                if ( key_enter_pos) begin
+                    key_right = 1'b0;
+                    //LED_4 = 1'b1; // 重新上锁
+                    key_state_next = IDLE;
+                    timer_20s=0;
+                end
             end
         endcase
     end
