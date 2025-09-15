@@ -220,7 +220,7 @@ endfunction
 
             INPUT1: begin
                
-                // num_sparkle = 8'b00000001;
+                num_sparkle = 8'b00000001;
                 Count_CLK <= Count_CLK - 1;
                 if (key_delete_pos) begin
                     Count_CLK <= tens;
@@ -239,7 +239,7 @@ endfunction
             end
 
             INPUT2: begin
-                // num_sparkle = 8'b00000010;
+                num_sparkle = 8'b00000010;
                 Count_CLK <= Count_CLK - 1;
                 if (key_delete_pos) begin
                     Count_CLK <= tens;
@@ -258,7 +258,7 @@ endfunction
             end
 
             INPUT3: begin
-                // num_sparkle = 8'b00000100;
+                num_sparkle = 8'b00000100;
                 Count_CLK <= Count_CLK - 1;
                 if (key_delete_pos) begin
                     Count_CLK <= tens;
@@ -277,7 +277,7 @@ endfunction
             end
 
             INPUT4: begin
-                // num_sparkle = 8'b00001000;
+                num_sparkle = 8'b00001000;
                 Count_CLK <= Count_CLK - 1;
                 if (key_delete_pos) begin
                     Count_CLK <= tens;
@@ -453,7 +453,7 @@ module Display(
             end
             INPUT1: begin
                     case (ENcount)
-                    0: begin ND_EN <= 8'b11111110; ND_Num <= NUM0; end
+                    0: begin ND_EN <= 8'b11111110; ND_EN <= (flicker2hz || !flicker[0]) ? 8'b11111110 : 8'b11111111;ND_Num <= NUM0; end
                     1: begin ND_EN <= 8'b11111101; ND_Num <= V0; end
                     2: begin ND_EN <= 8'b11111011; ND_Num <= V0; end
                     3: begin ND_EN <= 8'b11110111; ND_Num <= V0; end
@@ -466,7 +466,7 @@ module Display(
             INPUT2: begin
                     case (ENcount)
                     0: begin ND_EN <= 8'b11111110; ND_Num <= NUM0; end
-                    1: begin ND_EN <= 8'b11111101; ND_Num <= NUM1; end
+                    1: begin ND_EN <= 8'b11111101; ND_EN <= (flicker2hz || !flicker[1]) ? 8'b11111101 : 8'b11111111;ND_Num <= NUM1; end
                     2: begin ND_EN <= 8'b11111011; ND_Num <= V0; end
                     3: begin ND_EN <= 8'b11110111; ND_Num <= V0; end
                     4: begin ND_EN <= 8'b11101111; ND_Num <= V0; end
@@ -479,7 +479,7 @@ module Display(
                     case (ENcount)
                     0: begin ND_EN <= 8'b11111110; ND_Num <= NUM0; end
                     1: begin ND_EN <= 8'b11111101; ND_Num <= NUM1; end
-                    2: begin ND_EN <= 8'b11111011; ND_Num <= NUM2; end
+                    2: begin ND_EN <= 8'b11111011; ND_EN <= (flicker2hz || !flicker[2]) ? 8'b11111011 : 8'b11111111;ND_Num <= NUM2;end
                     3: begin ND_EN <= 8'b11110111; ND_Num <= V0; end
                     4: begin ND_EN <= 8'b11101111; ND_Num <= V0; end
                     5: begin ND_EN <= 8'b11011111; ND_Num <= V0; end
@@ -492,7 +492,7 @@ module Display(
                     0: begin ND_EN <= 8'b11111110; ND_Num <= NUM0; end
                     1: begin ND_EN <= 8'b11111101; ND_Num <= NUM1; end
                     2: begin ND_EN <= 8'b11111011; ND_Num <= NUM2; end
-                    3: begin ND_EN <= 8'b11110111; ND_Num <= NUM3; end
+                    3: begin ND_EN <= 8'b11110111; ND_EN <= (flicker2hz || !flicker[3]) ? 8'b11110111 : 8'b11111111;ND_Num <= NUM3;end
                     4: begin ND_EN <= 8'b11101111; ND_Num <= V0; end
                     5: begin ND_EN <= 8'b11011111; ND_Num <= V0; end
                     6: begin ND_EN <= 8'b10111111; ND_Num <= V0; end
