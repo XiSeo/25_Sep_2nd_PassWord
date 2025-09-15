@@ -124,7 +124,7 @@ endfunction
 
     // 数码管显示模块实例化
     reg [4:0] num0, num1, num2, num3;
-    reg [7:0] num_sparkle;
+    reg [3:0] num_sparkle;
 
     Display R_Display (
         .Num10khz(clk10khz),
@@ -141,7 +141,7 @@ endfunction
     );
 
     RGB R_RGB(
-    .CLK(clk_100MHz),
+    .clk(clk_100MHz),
     .key_state(key_state),
     .RGB1_GREEN(RGB1_GREEN),   
     .RGB2_GREEN(RGB2_GREEN)
@@ -232,7 +232,7 @@ endfunction
 
             INPUT1: begin
                
-                num_sparkle = 8'b00000001;
+                num_sparkle = 4'b0001;
                 Count_CLK <= Count_CLK - 1;
                 if (key_delete_pos) begin
                     Count_CLK <= tens;
@@ -251,7 +251,7 @@ endfunction
             end
 
             INPUT2: begin
-                num_sparkle = 8'b00000010;
+                num_sparkle = 4'b0010;
                 Count_CLK <= Count_CLK - 1;
                 if (key_delete_pos) begin
                     Count_CLK <= tens;
@@ -270,7 +270,7 @@ endfunction
             end
 
             INPUT3: begin
-                num_sparkle = 8'b00000100;
+                num_sparkle = 4'b0100;
                 Count_CLK <= Count_CLK - 1;
                 if (key_delete_pos) begin
                     Count_CLK <= tens;
@@ -289,7 +289,7 @@ endfunction
             end
 
             INPUT4: begin
-                num_sparkle = 8'b00001000;
+                num_sparkle = 4'b1000;
                 Count_CLK <= Count_CLK - 1;
                 if (key_delete_pos) begin
                     Count_CLK <= tens;
@@ -319,12 +319,6 @@ endfunction
                 end
             end
             
-            ERROR: begin
-                key_wrong = 1'b1;
-                if(key_enter_pos) begin
-                key_state_next = IDLE;
-                end
-            end
 
             WARNING: begin
                 key_warn = 1'b1;
@@ -332,6 +326,13 @@ endfunction
                     key_state_next = IDLE;
                     wrong_times = 2'b0;
                     key_warn=0;
+                end
+            end
+
+            ERROR: begin
+                key_wrong = 1'b1;
+                if(key_enter_pos) begin
+                key_state_next = IDLE;
                 end
             end
 
@@ -558,40 +559,65 @@ module Display(
 endmodule
 
 module RGB(
-    input CLK,
+    input clk,
     input [2:0] key_state,
-    output reg RGB1_GREEN,
-    output reg RGB2_GREEN
+    output wire RGB1_GREEN,
+    output wire RGB2_GREEN
     );
-    
-    reg [31:0] Count_RGBA;                  //报警状态下的计数器，用于闪烁显示
     
     localparam WARNING = 3'd6;
     
-    always @(posedge CLK)
-      begin
-        if(key_state == WARNING)        //报警状态两个均为绿色
-          begin
-            Count_RGBA <= 0;                    //利用计数器实现呼吸灯显示
-              if(Count_RGBA < 50000000)
-                begin
-                  Count_RGBA <= Count_RGBA + 1;
-                  RGB1_GREEN <= 1'b1;
-                  RGB2_GREEN <= 1'b1;
+    // 参数定义 - 用户可配置
+    parameter CLK_FREQ = 100_000_000;   // 输入时钟频率
+    parameter PWM_FREQ = 2_000;         // PWM频率 (2kHz)
+    parameter BREATH_FREQ = 2;          // 呼吸频率 (2Hz, 完成一呼一吸2秒)
+    
+    // 计算常数
+    localparam PWM_CNT_MAX = (CLK_FREQ / PWM_FREQ) - 1;
+    localparam PWM_CNT_WIDTH = $clog2(PWM_CNT_MAX);
+    localparam BREATH_STEP = (CLK_FREQ / BREATH_FREQ) / 512; // 亮度分辨率256*2
+    localparam BREATH_CNT_WIDTH = $clog2(BREATH_STEP);
+
+    // 内部寄存器
+    reg [PWM_CNT_WIDTH-1:0] pwm_counter = 0;
+    reg [BREATH_CNT_WIDTH-1:0] breath_counter = 0;
+    reg [7:0] brightness = 0;
+    reg direction = 0; // 0:递增, 1:递减
+
+    // PWM计数器
+    always @(posedge clk) begin
+        if (pwm_counter >= PWM_CNT_MAX)
+            pwm_counter <= 0;
+        else
+            pwm_counter <= pwm_counter + 1;
+    end
+
+    // 呼吸亮度发生器
+    always @(posedge clk) begin
+        if(key_state == WARNING) begin
+        breath_counter <= breath_counter + 1;
+        
+        if (breath_counter >= BREATH_STEP) begin
+                breath_counter <= 0;
+
+                if (direction == 0) begin
+                    if (brightness < 255)
+                        brightness <= brightness + 1;
+                    else
+                        direction <= 1;
+                end else begin
+                    if (brightness > 0)
+                        brightness <= brightness - 1;
+                    else
+                        direction <= 0;
                 end
-              else if(Count_RGBA == 80000000)
-                Count_RGBA <= 0;
-              else
-                begin
-                  Count_RGBA <= Count_RGBA + 1;
-                  RGB1_GREEN <= 1'b0;
-                  RGB2_GREEN <= 1'b0;      
-                end           
-          end
-        else begin
-            RGB1_GREEN <= 1'b0;
-            RGB2_GREEN <= 1'b0;
+            end
         end
-      end
+    end
+
+    // PWM比较输出
+    assign RGB1_GREEN = (pwm_counter < brightness);
+    assign RGB2_GREEN = (pwm_counter < brightness);
+
 endmodule
 
