@@ -570,7 +570,7 @@ module RGB(
     
     always @(posedge CLK)
       begin
-        if(key_state == WARNING)        //报警状态两个均为红色
+        if(key_state == WARNING)        //报警状态两个均为绿色
           begin
             Count_RGBA <= 0;                    //利用计数器实现呼吸灯显示
               if(Count_RGBA < 50000000)
