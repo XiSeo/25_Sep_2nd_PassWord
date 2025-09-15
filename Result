@@ -25,8 +25,10 @@ module PassWord(
     localparam INPUT2    = 3'd2; // 输入第二位
     localparam INPUT3    = 3'd3; // 输入第三位
     localparam INPUT4    = 3'd4; // 输入第四位
-    localparam WARNING   = 3'd5; // 报警状态
-    localparam UNLOCKED  = 3'd6; // 开锁状态
+    localparam ERROR     = 3'd5; // 错误提醒状态
+    localparam WARNING   = 3'd6; // 报警状态
+    localparam UNLOCKED  = 3'd7; // 开锁状态
+
 
     parameter PASSWORD_LENGTH = 4;
     reg [2:0] key_state_next = 0;
@@ -196,6 +198,7 @@ endfunction
 
         case(key_state)
             IDLE: begin
+                key_wrong<=1'b0;
                 key_right <= 1'b0;
                 key_warn <= 1'b0;
                 LED <= 10'b0000000000;
@@ -216,7 +219,7 @@ endfunction
             end
 
             INPUT1: begin
-                key_wrong<=1'b0;
+               
                 // num_sparkle = 8'b00000001;
                 Count_CLK <= Count_CLK - 1;
                 if (key_delete_pos) begin
@@ -293,15 +296,21 @@ endfunction
                             Count_CLK<=twentys;
                             key_state_next <= UNLOCKED;
                         end else begin
-                            key_wrong = 1'b1;
                             wrong_times = wrong_times + 2'b1;
                             if (wrong_times == 2'd3) begin
                                 key_state_next = WARNING;
                             end else begin
-                                key_state_next = IDLE;
+                                key_state_next = ERROR;
                             end
                         end
                     end
+                end
+            end
+            
+            ERROR: begin
+                key_wrong = 1'b1;
+                if(key_enter_pos) begin
+                key_state_next = IDLE;
                 end
             end
 
@@ -376,7 +385,7 @@ module Display(
     input wire [1:0]wrong_times
 );
     localparam IDLE = 3'd0, INPUT1 = 3'd1, INPUT2 = 3'd2, INPUT3 = 3'd3, 
-               INPUT4 = 3'd4, WARNING = 3'd5, UNLOCKED = 3'd6;
+               INPUT4 = 3'd4, ERROR =3'd5, WARNING = 3'd6, UNLOCKED = 3'd7;
                
     // 共阳极数码管编码 (0亮1灭)
     parameter N0 = 8'b11000000;  // 0
@@ -399,6 +408,7 @@ module Display(
     parameter VC = 8'b11000110;  // C
     parameter VS = 8'b10010010;  // S
     parameter VU = 8'b11000001;  // U
+    parameter VR = 8'b10001000;  // R
     parameter V0 = 8'b11111111;  //全灭
 
     reg [7:0] NUM0, NUM1, NUM2, NUM3;
@@ -431,7 +441,7 @@ module Display(
         case(mode)
             IDLE: begin
                 case (ENcount)
-                    0: begin ND_EN <= 8'b11111110; ND_Num <= NUM4; end
+                    0: begin ND_EN <= 8'b11111110; ND_Num <= V_; end
                     1: begin ND_EN <= 8'b11111101; ND_Num <= V_; end
                     2: begin ND_EN <= 8'b11111011; ND_Num <= V_; end
                     3: begin ND_EN <= 8'b11110111; ND_Num <= Vo; end
@@ -491,6 +501,20 @@ module Display(
                 // ND_EN <= (flicker2hz || !flicker[3]) ? 8'b11110111 : 8'b11111111;
                 // ND_Num <= NUM3;
             end
+
+            ERROR: begin
+                case (ENcount)
+                    0: begin ND_EN <= 8'b11111110; ND_Num <= NUM4; end
+                    1: begin ND_EN <= 8'b11111101; ND_Num <= V_; end
+                    2: begin ND_EN <= 8'b11111011; ND_Num <= V_; end
+                    3: begin ND_EN <= 8'b11110111; ND_Num <= VR; end
+                    4: begin ND_EN <= 8'b11101111; ND_Num <= Vo; end
+                    5: begin ND_EN <= 8'b11011111; ND_Num <= VR; end
+                    6: begin ND_EN <= 8'b10111111; ND_Num <= VR; end
+                    7: begin ND_EN <= 8'b01111111; ND_Num <= VE; end
+                endcase
+            end
+
             UNLOCKED: begin
                 case (ENcount)
                     0: begin ND_EN <= 8'b11111110; ND_Num <= VS; end
